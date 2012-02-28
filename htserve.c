@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
 		if (timeout.tv_sec) {
 			if (setsockopt(ss, SOL_SOCKET, SO_RCVTIMEO, 
 					&timeout, sizeof(timeout))
-				|| setsockopt(ss, SOL_SOCKET, SO_RCVTIMEO, 
+				|| setsockopt(ss, SOL_SOCKET, SO_SNDTIMEO, 
 					&timeout, sizeof(timeout)))
 			{
 				perror("IO timeout");
