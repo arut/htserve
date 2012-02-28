@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/sendfile.h>
@@ -26,11 +27,11 @@ static int output_buf(int fd, const char *buf, size_t size)
 	int ret;
 
 	for(;;) {
-		ret = write(fd, buf, size);
+		ret = send(fd, buf, size, MSG_NOSIGNAL);
 		if (ret == size)
 			return 0;
 		if (ret == -1) {
-			perror("write error");
+			perror("send error");
 			return 1;
 		}
 		buf += ret;
@@ -56,7 +57,7 @@ static void* http_handler(void *arg)
 	size = sizeof(rq);
 	for(;;) {
 
-		ret = read(ss, s, size);
+		ret = recv(ss, s, size, 0);
 		
 		if (!ret) {
 			fprintf(stderr, "eof!\n");
@@ -140,11 +141,9 @@ done_rq:
 
 	fd = open(uri, O_RDONLY);
 
-	if (fd != -1) {
-		if (fstat(fd, &st)) {
-			perror("fstat");
-			goto out;
-		}
+	if (fd != -1 && fstat(fd, &st)) {
+		perror("fstat");
+		goto out;
 	}
 
 	if (fd == -1) {
@@ -208,10 +207,10 @@ static void print_version()
 			"server for static content\n") ;
 } 
 
-static inline void print_usage()
+static void print_usage()
 {
 	print_version() ;
-	printf("Usage: httpserve [OPTION*]\n"
+	printf("Usage: htserve [OPTION*]\n"
 			"  -p, --port       port to listen, default is %d\n"
 			"  -t, --timeout    network IO timeout (in sec), default is infinity\n"
 			"  -d, --directory  chdir to directory before runnung\n"
@@ -259,6 +258,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	signal(SIGPIPE, SIG_IGN);
+
 	s = socket(AF_INET, SOCK_STREAM, 0);
 	if (s == -1) {
 		perror("socket");
@@ -297,12 +298,19 @@ int main(int argc, char *argv[])
 					&timeout, sizeof(timeout)))
 			{
 				perror("IO timeout");
+				close(ss);
 				continue;
 			}
 		}
 
 		if (pthread_create(&pt, NULL, http_handler, (void*)(long)ss)) {
 			fprintf(stderr, "pthread_create failed\n");
+			close(ss);
+			continue;
+		}
+
+		if (pthread_detach(pt)) {
+			fprintf(stderr, "pthread_detach failed\n");
 			continue;
 		}
 	}
